@@ -1,0 +1,2 @@
+# Preserve source bytes so SHA-256 provenance remains stable across platforms.
+* -text

@@ -1,0 +1,40 @@
+{
+  "backend": "adapters.original_project:OriginalBackend",
+  "device": "cpu",
+  "torch_threads": 1,
+  "methods": ["F0", "F1", "F2", "F3", "F4"],
+  "robustness_methods": ["F0", "F1", "F4"],
+  "training_seeds": [0,1,2,3,4,5,6,7,8,9],
+  "validation_seeds": [101,102,103],
+  "test_environment_seeds": [201,202,203,204,205],
+  "corruption_seeds": [11,22,33],
+  "minimum_test_seeds": 10,
+  "ppo": {
+    "total_steps": 36000,
+    "rollout_steps": 2048,
+    "update_epochs": 10,
+    "minibatch_size": 64,
+    "validate_every_steps": 4096,
+    "hidden": 256,
+    "embed_dim": 16,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip": 0.2,
+    "entropy_coef": 0.01,
+    "value_coef": 0.5,
+    "learning_rate": 0.0003,
+    "max_grad_norm": 0.5
+  },
+  "original_project": {
+    "status": "REQUIRES_ORIGINAL_CODE_AND_AUDITED_CONFIGURATION",
+    "history": 12,
+    "horizons": [1,2,4,6],
+    "decision_minutes": 10,
+    "nodes": 24,
+    "resource_totals": [30,24,16,12],
+    "split_days": [126,27,27],
+    "forecaster_checkpoint": null,
+    "simulator_config": null,
+    "note": "Known manuscript values mixed with explicitly proposed experiment defaults. Audit against source; never treat this template as recovered original configuration. 36000=500*72 assumes one operating day per episode."
+  }
+}

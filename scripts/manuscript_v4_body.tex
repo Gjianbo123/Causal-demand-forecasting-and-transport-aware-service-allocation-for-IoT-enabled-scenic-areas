@@ -1,0 +1,187 @@
+\section{Introduction}
+IoT-enabled destinations need to turn observations of demand into timely service decisions. A resource dispatched towards a growing queue temporarily stops serving at its origin and cannot help at its destination until travel finishes. Consequently, a lower prediction error does not by itself establish better allocation. The observation interface, transport commitments and service outcomes must be evaluated together. Uncertainty propagation is also a practical concern when information passes through several IoT components~\citep{pal2024}.
+
+Tourism demand forecasting already incorporates spatial and temporal dependencies~\citep{law2019,li2022,zhou2023,liang2025}. Adaptive graph forecasting, identity-based predictors and variate-attention Transformers provide further alternatives~\citep{wu2019,shao2022,liu2024}. The remaining question addressed here is operational: can a causal predictor and an explicit estimate of service lost during relocation reduce accrued waiting under finite resource and transport constraints?
+
+We investigate that question in a fully disclosed synthetic scenic-area system. The proposed predictor combines a training-derived daily profile, a graph residual gated recurrent unit (GRU), and Graph WaveNet (GWN). A receding-horizon transport rollout evaluates individual transfers through their effects on predicted queues. Each accepted transfer must reduce its planning cost and preserve inventory and destination reservations. This is a modular forecast-and-control method; it does not train an end-to-end policy or imply that a forecast controls future inflow.
+
+The study contributes a causal seasonal-residual forecasting design, a transport-aware marginal allocation procedure, and a reproducible comparison linking prediction errors to FIFO service outcomes. The evaluation includes seven newly generated random worlds, a demand-intensity stress condition, eleven forecasting variants, static allocation, two previously trained PPO variants, and matched-predictor MPC comparisons. A separate 12-step MPC comparison examines the effect of planning horizon. Raw predictions, executed flows, terminal queues, solver returns and source hashes accompany the reported results. The scope is controlled synthetic evidence; field deployment has not been evaluated.
+
+\section{Related work}
+Spatial tourism forecasting includes deep temporal models~\citep{law2019}, spatiotemporal feature integration~\citep{li2022}, and graph attention over relations among scenic regions~\citep{zhou2023}. Multi-step graph forecasting further addresses dependence across lead times~\citep{liang2025}. These results motivate spatial predictors but do not establish how prediction gains translate into resource service. General graph and time-series methods supply demanding comparators: Graph WaveNet learns adaptive graph dependencies~\citep{wu2019}, STID uses spatial and temporal identities~\citep{shao2022}, PatchTST models temporal patches~\citep{nie2023}, and iTransformer applies attention across variate tokens~\citep{liu2024}. We benchmark executable adaptations of GWN, STID and iTransformer, with their source versions and adaptations recorded. Mentioned methods without executable evaluations are not presented as experimental baselines.
+
+Decision-focused learning explicitly connects predictions to downstream optimization~\citep{donti2017,elmachtoub2022,wilder2019}. Our forecasting loss remains separate from the allocation objective, so the method does not inherit the properties of end-to-end decision-focused learning. Reoptimization with updated forecasts has also been studied for dynamic resource allocation~\citep{ciocan2012}. That literature motivates an MPC comparator, while its theoretical guarantees concern different problem assumptions. The rollout proposed here provides no global optimality, stability or queue-safety guarantee.
+
+Deep reinforcement learning has been applied to fleet management and redistribution~\citep{lin2018,pan2019}. PPO~\citep{schulman2017} is a useful policy-learning baseline, but a feasible dispatch must still respect the physical model. Constrained learning, action masking and predictive safety filters address different forms of admissibility~\citep{achiam2017,huang2022,wabersich2021}. In this study, integer resource constraints are hard execution rules, whereas queue overload is a soft operational penalty. Those two notions of feasibility are reported separately. Repeated training and paired stochastic evaluations help expose variation that single-run comparisons conceal~\citep{agarwal2021}.
+
+\section{System model and architecture}
+\subsection{Synthetic demand and causal observations}
+The fixed physical graph contains 24 nodes: 16 service locations, four hubs and four gates, linked by 31 undirected edges of 90--320 m. Shortest-path distances determine resource travel. Each day contains 72 intervals of 10 min. Prehistory spans times $-14$ to $0$, and the first decision is made at $t=0$. Service queues start empty. Hubs and gates generate no service requests and cannot hold service resources.
+
+The demand generator combines morning and afternoon gate peaks, calendar and weather multipliers, localized events and graph propagation:
+\begin{equation}
+\lambda_{d,t}=e_{d,t}+0.68\lambda_{d,t-1}P,
+\qquad X_{d,t,i}\sim\operatorname{Poisson}(\lambda_{d,t,i}\eta_{d,t,i}),
+\end{equation}
+where $P$ is row-normalized physical adjacency and $\eta$ is mean-one lognormal noise. Four request classes are drawn independently conditional on the visit-event count:
+\begin{equation}
+R_{d,t,k,i}\sim\operatorname{Binomial}(X_{d,t,i},p_k),
+\qquad p=(0.75,0.55,0.40,0.30).
+\end{equation}
+These counts are service requests rather than distinct tourists; one visit event can generate more than one request type. No complete individual itinerary or conserved visitor trajectory is simulated. All demand realizations are generated before controller evaluation and shared across the compared controllers. The generator is a modeling assumption, not an anonymized transformation of a real sensor dataset. Supplementary Material provides its numerical configuration.
+
+A telemetry packet contains inflow and four queue counts. At decision time $t$, each historical slot uses a measurement with event time no later than that slot and receipt time no later than $t$. The interface supports causal forward filling and training-slot median fallback. The new evaluation uses complete, timely observations; it does not claim a new missing-data robustness result. The trusted resource ledger reports stationary inventory, reserved incoming resources and their quantity-weighted remaining travel time. Forecasting uses only the last 12 inflow frames, operating time and the fixed graph. Queues and the resource ledger separately enter the controller. Hidden intensities and future requests are never predictor or controller inputs.
+
+\subsection{Transport and FIFO service}
+Four resource classes have totals $(30,24,16,12)$ and per-service-node holding limits $(5,4,3,3)$. Initial resources are spread uniformly with largest-remainder integer allocation. A stationary unit serves at most two requests per interval, with no additional base capacity. For a dispatch from $i$ to $j$,
+\begin{equation}
+\tau_{k,i,j}=\left\lceil\frac{D_{i,j}/v_k+b_k}{10}\right\rceil,\quad i\ne j,
+\end{equation}
+where $D$ is shortest-path distance, $v=(80,55,40,30)$ m/min and $b=(2,4,6,8)$ min. Dispatched units immediately stop serving, cannot be recalled or redirected in transit, and reserve destination capacity. A unit arriving at an interval's end becomes available for service in the next interval. Thus even a one-interval trip loses one interval of service.
+
+With $I^+_{k,i,t}$ stationary inventory after dispatch, queues obey
+\begin{equation}
+Q_{k,i,t+1}=\left[Q_{k,i,t}+R_{k,i,t+1}-2I^+_{k,i,t}\right]_+ .
+\end{equation}
+Service is FIFO, with new requests eligible for zero-bin waiting when served at their arrival boundary. Remaining requests at closing are retained as terminal backlog. Figure~\ref{fig:architecture} separates the exogenous demand process from the service feedback loop.
+\begin{figure}[!htbp]
+\centering\includegraphics[width=165mm]{System_architecture.pdf}
+\caption{Implemented system architecture. Synthetic inflow is exogenous; service queues respond to allocation. Offline selection precedes generation of the new test worlds. At each decision, causal inflow history supplies the forecast, while queues and the trusted ledger also reach the controller directly. Resource and queue observations return through the telemetry interface. The diagram describes simulation rather than physical deployment}\label{fig:architecture}
+\end{figure}
+\FloatBarrier
+
+\section{Forecasting and transport rollout}
+\subsection{Causal seasonal-residual forecast combination}
+Let $\mu_{s,i}$ denote the mean inflow at time slot $s$, fitted using only the 126 training days. A window-specific scale uses the observed history:
+\begin{equation}
+a_t=\operatorname{clip}_{[0.05,5]}\!\left(
+\frac{\sum_{s=t-11}^{t}\sum_i X_{s,i}}
+{\max(10^{-6},\sum_{s=t-11}^{t}\sum_i\mu_{s,i})}\right).
+\end{equation}
+The anchor at lead $h$ is $B_{i,h}=a_t\mu_{t+h,i}$, for $h\in\{1,2,4,6\}$. Residual history is $(X_{s,i}-a_t\mu_{s,i})/\sigma_i$, with $\sigma_i$ the training inflow standard deviation, lower bounded by one. This estimates daily scale from past counts rather than from the generator's latent state or known future calendar realization.
+
+The residual network has three input channels per node: the local residual and its one- and two-step propagation through row-normalized adjacency with self-loops. A shared 64-unit GRU encodes the 12-step history. Its output is concatenated with four normalized anchor forecasts, $a_t$, sine/cosine operating time, and an eight-dimensional learned node embedding. Two 64-unit GELU layers and a four-output linear head predict residual corrections. A dropout rate of 0.05 follows the first hidden layer, and the output head starts at zero. Corrected predictions are rescaled, added to the anchor, and clipped to nonnegative values.
+
+The selected network minimizes raw-count SmoothL1 loss with transition parameter one. Three training seeds are averaged. The deployed predictor is the validation-selected combination
+\begin{equation}
+\widehat X=0.75\,\overline X^{\mathrm{residual}}
+           +0.25\,\overline X^{\mathrm{GWN}},
+\end{equation}
+where GWN also averages three training seeds. The result uses six neural models, while the standalone neural comparators use three. This extra ensemble cost and the unequal search budgets are disclosed rather than interpreted as a capacity-matched architecture comparison. Forecasts beyond the published closing time are zeroed for control calls.
+
+\subsection{Transport-aware marginal rollout}
+Expected requests are obtained from the four forecast leads using linear interpolation and the fixed class probabilities. When the planning horizon exceeds six intervals, the training-slot profile supplies the tail. At node $i$, its scale is the six-step forecast divided by $\max(\mu_{t+6,i},0.25)$, clipped to $[0.05,5]$. The same extension is supplied to the 12-step MPC comparator. Every planning horizon is truncated at closing.
+
+For a candidate set of current transfers $x$, the rollout holds all subsequent dispatches at zero over its horizon, while honoring previously committed arrivals. Let $C_{u,k,i}(x)$ be the resulting service capacity. Predicted queues satisfy
+\begin{equation}
+\widehat Q_{u+1,k,i}(x)=
+\left[\widehat Q_{u,k,i}(x)+\widehat R_{u+1,k,i}-C_{u,k,i}(x)\right]_+ .
+\end{equation}
+The planning objective retains the original queue, overload and movement scales:
+\begin{equation}\label{eq:rollout_cost}
+\begin{split}
+J(x)={}&\sum_{u=1}^{H}\left[\frac{\sum_{k,i}\widehat Q_{u,k,i}(x)}{16\cdot25}
++\frac{0.02}{16}\sum_{i=1}^{16}\left[\sum_k\widehat Q_{u,k,i}(x)-50\right]_+\right]\\
+&+0.025\sum_{k,i,j}x_{k,i,j}D_{i,j}/1000
++\frac{\alpha\sum_{k,i}\widehat Q_{H,k,i}(x)}{16\cdot25}.
+\end{split}
+\end{equation}
+Starting with no new transfers, the algorithm considers feasible one-unit moves. Each unit removes capacity at its origin immediately and adds capacity at its destination only after its travel time. It selects the move with the largest positive reduction in $J$, updates inventory and reservations, and repeats until no improving move remains. Ties follow deterministic class/origin/destination order. Only currently stationary resources may depart; a unit allocated as an incoming transfer cannot depart again in the same decision. The selected flows are checked for integrality, inventory availability and destination holding before execution. Queues are observed again at the next decision and the procedure replans.
+
+Development selected $H=12$ and $\alpha=0$. The scheme searches current marginal transfers rather than an optimal sequence of future transfers. It can miss beneficial multi-unit combinations and may be sensitive to forecast bias. Feasible execution follows from the resource checks; neither marginal improvement of the surrogate cost nor integer feasibility guarantees optimal realized waiting or a safe queue length.
+
+\section{Experimental design}
+\subsection{Development, freezing and new tests}
+The original synthetic dataset comprises 180 days: 126 training, 27 validation and 27 original test days. Earlier exploratory experiments motivated the new design. The new forecast search uses the first 18 validation days. Seven candidates compare the scale-only anchor, three anchored ridge penalties, two graph MLP losses, and a graph residual GRU. Neural candidates use AdamW, learning rate 0.001, weight decay $10^{-4}$, batch size 128, gradient clipping at one, a 100-epoch ceiling and patience 12. Development MAE selects the family and checkpoints. The winning family is fitted with seeds 0, 1 and 2. The residual/GWN mixture weight is selected from $\{0,0.25,0.5,0.75,1\}$ using the same development days. Details and all losing candidates are retained.
+
+The control search compares horizons $\{6,12,18\}$ and terminal weights $\{0,4\}$ on validation offsets 0, 6 and 12, selecting pooled waiting area per request. Validation offsets 18, 22 and 26 provide a later diagnostic without changing the selected controller. The final nine validation days similarly diagnose forecasting. These are development checks: the earlier study had already used the full validation partition, and the first residual-model confirmation was viewed before the later combination stage. No validation subset is described as a historically untouched final test.
+
+Code, selected weights, parameters, evaluation seeds and endpoints were hashed before generating the new test datasets. Seven independent random seeds, 20261011--20261017, generate new demand worlds using the same physical graph and distributions. Forecasting evaluates days 153--179, with 67 origins per day, 24 nodes and four leads. Control evaluates the nine predeclared test offsets $0,3,6,9,12,15,18,21,24$, giving 63 episodes per condition per deterministic method. A stress condition multiplies gate baseline, gate peak and event amplitude by 1.6; this changes intensity parameters rather than enforcing exactly 60\% more realized requests. No retraining or parameter selection uses these test outcomes.
+
+\subsection{Comparators and information differences}
+Forecasting compares persistence, anchored profile, ridge regression, LSTM, GRU, edge-STGRU, GWN, STID, iTransformer, residual GRU and the selected combination. The existing neural comparators were selected from three width/learning-rate settings on the original full validation partition, trained for at most 100 epochs with patience 12, and evaluated as three-seed prediction ensembles here. They use the same 12-frame inflow history and operating clock, with graph connectivity or identities as appropriate. All transforms are fitted on original training days. Supplementary Material records architecture dimensions, selected settings and source adaptations.
+
+Control references include static initial allocation and two frozen PPO variants: F0 has no forecast input, while F4 uses resource-specific horizon attention. Both retain all ten previously trained seeds, 43,200 training steps per seed, validation-selected checkpoints and their original predictor. They are complete-system references, not retrained variants of the new combination. Their target-allocation actions use deterministic nearest-surplus matching. The flow controllers instead select origin--destination transfers directly. PPO also receives history masks, ages and known day descriptors, so its observation encoding and action parameterization are not identical to the rollout's.
+
+Six-step flow MPC is evaluated with both GWN and the identical new combined predictor. Its time-expanded mixed-integer model optimizes future transfers, queue epigraphs and overload under the same transport, service and reservation rules. It uses one solver thread, a 1-s soft limit per call and a 1\% relative optimality-gap target. Feasible time-limited incumbents are retained; if no valid incumbent exists, the defined action is to hold current resources and honor commitments. A 12-step MPC with the identical predictor and seasonal tail is additionally evaluated on offsets 0, 12 and 24 in each world, giving 21 paired episodes per condition. Every comparison to that method uses exactly the same subset for the other method. No test oracle or realized future demand is supplied to an online comparator.
+
+\subsection{Metrics, uncertainty and reproducibility}
+Forecast metrics are MAE, RMSE and WAPE over all eligible targets, with per-horizon values retained. Each world contributes one aggregate value. The primary service metric is accrued waiting per request:
+\begin{equation}
+W=\frac{10\sum_{t=0}^{71}\sum_{k,i}Q_{k,i,t}}
+        {\sum_{t=1}^{72}\sum_{k,i}R_{k,i,t}}.
+\end{equation}
+Its numerator includes accrued waiting of requests still unserved at closing. It is a restricted mean, not the eventual waiting time of those requests. FIFO served waits, terminal unserved percentage, overload frequency, resource-kilometers and infeasible actions provide complementary outcomes. Overload counts service-node/interval pairs with total queue above 50, without claiming a validated physical crowd-safety threshold.
+
+Within each world, daily waiting areas and arrivals are pooled. PPO areas are first averaged across its ten training seeds for each day, keeping a single demand denominator. World-level paired differences, rather than requests, days or policy seeds treated as independent worlds, support inference. Two predeclared primary contrasts are combined versus GWN forecast MAE and rollout versus same-predictor six-step MPC waiting. Two-sided exact sign-flip tests enumerate all $2^7$ assignments; Holm adjustment covers these two tests. The test assumes independent sign-symmetric paired differences under the null. Seven-world Student-$t$ intervals are descriptive and conditional on the selected training artifacts. Other contrasts are exploratory.
+
+Experiments use Python 3.11.5, NumPy 1.26.4, PyTorch 2.7.1 with CUDA 11.8, SciPy 1.11.4 and its HiGHS-backed mixed-integer solver. Forecast training uses an NVIDIA RTX 4060 Laptop GPU; controllers use an Intel Core i7-13620H CPU with one solver thread. Source and checkpoint hashes, candidate logs, predictions and episode traces are archived. Causal-input memoization speeds final trajectory evaluation because exogenous inflow is shared; memoized run times are not deployment-latency evidence. Separate uncached serial measurements and independent FIFO/transport replay are reported in Supplementary Material.
+
+\section{Results}
+\subsection{Forecast accuracy}
+Table~\ref{tab:forecast} reports aggregate forecast errors, and Fig.~\ref{fig:forecast} separates the prediction horizons.
+
+\input{tables/forecast_main.tex}
+
+The combined predictor obtains mean MAE \ForecastNominal{} under nominal demand, compared with \ForecastGWN{} for the GWN ensemble, a reduction of \ForecastGain\%. It has lower MAE in all seven nominal worlds. The paired mean difference is \ForecastDifference{} visit events, with a descriptive 95\% interval of [\ForecastLow{}, \ForecastHigh{}] and Holm-adjusted $p=\ForecastP$. The absolute gain is modest and should be assessed against the cost of the additional residual ensemble.
+
+\input{figures_forecast.tex}
+The stress results test extrapolation to higher demand intensity without retraining. The combined predictor's stress MAE is \ForecastSurge{}, compared with \ForecastGWNSurge{} for GWN. Standalone residual GRU is an informative component comparison: it avoids the additional GWN calls and has the lowest stress RMSE among these variants, while the combination has the lowest mean stress MAE. Consequently, the selected combination is not uniformly best under every loss function. Horizon-specific scores and all world-level results are retained in Supplementary Material.
+\FloatBarrier
+
+\subsection{Service allocation and matched comparisons}
+Table~\ref{tab:control} and Fig.~\ref{fig:waiting} summarize the full control matrix. Table~\ref{tab:matched} then restricts the comparison to the common horizon-matched subset.
+
+\input{tables/control_main.tex}
+
+\ControlInterpretation\par
+
+\input{figures_control.tex}
+
+\input{tables/control_matched.tex}
+
+\MatchedInterpretation\par
+
+The identical-predictor comparison isolates allocation design from a change in the supplied forecast. The 12-step comparison additionally matches look-ahead and the training-profile tail, but retains different search procedures and a bounded MPC solve budget. Neither comparison establishes superiority over an unlimited-time optimum. Stress increases system loading without adding resources; absolute waiting and terminal backlog therefore remain relevant even when a method improves the relative ranking.
+\FloatBarrier
+
+\subsection{Development sensitivity, feasibility and computation}
+Table~\ref{tab:development} reports the complete control search, and Table~\ref{tab:timing} reports local computation after all concurrent experiment workers have stopped.
+
+\input{tables/development.tex}
+
+All six control candidates are reported rather than only the selected setting. The 12-step, zero-terminal-weight rollout has development waiting \DevelopmentWait{} min/request and the later three-day diagnostic yields \ConfirmationWait{} min/request. Those values describe different demand days and cannot be interpreted as a temporal improvement. Extending the horizon to 18 steps or adding a terminal penalty does not monotonically improve the development metric.
+
+\AuditInterpretation\par
+
+\input{tables/timing.tex}
+
+\TimingInterpretation\par
+\FloatBarrier
+
+\section{Discussion and limitations}
+The method separates two sources of improvement. Training-slot anchoring estimates the broad daily demand level from recent observations, while graph residuals model departures from that profile. Combining the residual model with GWN reduces average prediction error in the evaluated nominal worlds. The control procedure then prices service lost at the origin and delayed service gained at the destination before moving a unit. Updating queues and commitments after every interval makes this a closed-loop service controller, even though the demand trajectory remains exogenous.
+
+The evaluation is deliberately narrower than an application deployment claim. All seven worlds share one topology and one generator family. More stochastic realizations improve replication within that family but do not demonstrate transfer to new destinations, graph structures, sensor technologies or behavioral demand mechanisms. Repeated daily profiles may favor the anchor design. Real tourist counts, service productivity, setup times and transport conditions would be needed to calibrate those assumptions. Only outcomes from the disclosed executable study support the numerical claims.
+
+Architecture, training loss, parameter count, mixture size and search budget differ among forecasting variants. The selected predictor uses six networks, compared with three for standalone neural baselines. Its comparison establishes performance of these selected systems, not a controlled proof that one architectural component alone causes every gain. The residual-only and anchor-only comparisons expose some contributions, while fully matched retraining ablations would be needed to identify all mechanisms. Search-stage results are exploratory and remain separate from the newly generated final worlds.
+
+For allocation, rollout evaluates a hold-after-current-dispatch approximation; MPC optimizes a richer sequence subject to its computational budget. Differences in realized waiting can reflect approximation, replanning, bounded solve quality and the mismatch between a planning surrogate and the evaluation metric. PPO uses a different action parameterization and original forecasting input. The 12-step MPC comparison is limited to 21 episodes per condition, and its uncertainty should not be replaced by that of the larger nine-day comparison. All solver statuses and gaps are retained for this reason.
+
+Synthetic visit events are not conserved individuals, class requests are conditionally independent, and the service rate is fixed. Closing censors eventual waiting. The new evaluation assumes timely count reports and reliable resource acknowledgements. The wider telemetry interface can represent missing and delayed counts, but no new robustness conclusion follows without evaluating those settings. Integer resource feasibility is verified; crowd safety, privacy engineering, cybersecurity and network reliability remain outside this service simulator.
+
+\section{Conclusion}
+This study evaluates causal demand forecasting and transport-aware marginal service allocation in a reproducible synthetic IoT system. The selected forecast combination improves mean nominal MAE from \ForecastGWN{} to \ForecastNominal{} across seven new random worlds. \ConclusionControl{} Matched-predictor and matched-horizon comparisons, terminal-backlog accounting and retained solver records make the scope of the evidence explicit. The results support the tested design under the stated simulator and budgets; independent field measurements and different topologies are required before asserting practical deployment effectiveness.
+
+\section*{Declarations}
+Funding: Author confirmation required before submission.
+
+Competing interests: Author confirmation required before submission.
+
+Author contributions: The corresponding author must verify the contribution statement before submission.
+
+Ethics and consent: This computational study uses wholly synthetic data and involves no human participants, identifiable personal data or animal subjects.
+
+Data and code availability: The accompanying reproducibility package contains the synthetic generator, fixed configuration, selected checkpoints, candidate records, raw predictions, executed flows, analysis and figure scripts. No real sensor dataset was used. The author must finalize public archival access and the release identifier before submission; no repository DOI is currently claimed.
+
+AI assistance: OpenAI Codex assisted with software implementation, experiment execution, analysis and manuscript preparation. Code and numerical records are supplied for inspection. Final scientific review, authorship statements and approval remain the author's responsibility.

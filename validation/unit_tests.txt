@@ -1,0 +1,22 @@
+test_demo_counts_arrivals_and_overload_separately (test_experiments.DynamicsTests.test_demo_counts_arrivals_and_overload_separately) ... ok
+test_forecast_targets_stay_at_current_time_plus_horizon (test_experiments.DynamicsTests.test_forecast_targets_stay_at_current_time_plus_horizon) ... ok
+test_repair_conserves_resources_respects_limits_and_is_deterministic (test_experiments.DynamicsTests.test_repair_conserves_resources_respects_limits_and_is_deterministic) ... ok
+test_terminal_gae_does_not_cross_episodes (test_experiments.DynamicsTests.test_terminal_gae_does_not_cross_episodes) ... ok
+test_all_modes_shape_and_attention_normalization (test_experiments.FusionTests.test_all_modes_shape_and_attention_normalization) ... ok
+test_common_backbone_initialization_is_paired (test_experiments.FusionTests.test_common_backbone_initialization_is_paired) ... ok
+test_raw_action_likelihood_is_consistent (test_experiments.FusionTests.test_raw_action_likelihood_is_consistent) ... ok
+test_reactive_has_no_forecast_dependency (test_experiments.FusionTests.test_reactive_has_no_forecast_dependency) ... ok
+test_transfer_tensor_action_head (test_experiments.FusionTests.test_transfer_tensor_action_head) ... ok
+test_duplicate_trials_rejected (test_experiments.StatisticsTests.test_duplicate_trials_rejected) ... ok
+test_exact_p_with_all_positive_differences (test_experiments.StatisticsTests.test_exact_p_with_all_positive_differences) ... ok
+test_ties_zeros_and_insufficient_seeds (test_experiments.StatisticsTests.test_ties_zeros_and_insufficient_seeds) ... ok
+test_corruption_stream_is_independent_and_paired (test_experiments.TelemetryTests.test_corruption_stream_is_independent_and_paired) ... ok
+test_delay_is_causal_and_event_time_is_preserved (test_experiments.TelemetryTests.test_delay_is_causal_and_event_time_is_preserved) ... ok
+test_duplicate_event_rejected (test_experiments.TelemetryTests.test_duplicate_event_rejected) ... ok
+test_nominal_and_missing_fallback (test_experiments.TelemetryTests.test_nominal_and_missing_fallback) ... ok
+test_stats_zero_variance_has_documented_fallback (test_experiments.TelemetryTests.test_stats_zero_variance_has_documented_fallback) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.038s
+
+OK

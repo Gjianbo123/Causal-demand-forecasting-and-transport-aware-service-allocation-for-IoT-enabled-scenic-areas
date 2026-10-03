@@ -1,0 +1,250 @@
+{
+  "backend": "iotexp.scenic:ScenicBackend",
+  "device": "cpu",
+  "torch_threads": 1,
+  "methods": [
+    "F0",
+    "F1",
+    "F2",
+    "F3",
+    "F4"
+  ],
+  "robustness_methods": [
+    "F0",
+    "F1",
+    "F4"
+  ],
+  "training_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "validation_seeds": [
+    0,
+    6,
+    12,
+    18,
+    26
+  ],
+  "test_environment_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26
+  ],
+  "corruption_seeds": [
+    11
+  ],
+  "minimum_test_seeds": 10,
+  "checkpoint_selection": "validation_reward",
+  "primary_metric": "restricted_mean_wait_min",
+  "trace_mode": "compact",
+  "ppo": {
+    "total_steps": 14400,
+    "rollout_steps": 720,
+    "update_epochs": 4,
+    "minibatch_size": 120,
+    "validate_every_steps": 3600,
+    "hidden": 96,
+    "embed_dim": 8,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip": 0.2,
+    "entropy_coef": 0.001,
+    "value_coef": 0.5,
+    "learning_rate": 0.0003,
+    "max_grad_norm": 0.5,
+    "reward_scale": 0.01,
+    "target_kl": 0.02
+  },
+  "scenic": {
+    "name": "ScenicIoT-Rebuild-v1",
+    "dataset_seed": 20260929,
+    "days": 180,
+    "split_days": [
+      126,
+      27,
+      27
+    ],
+    "nodes": 24,
+    "history": 12,
+    "warmup_extra": 2,
+    "horizons": [
+      1,
+      2,
+      4,
+      6
+    ],
+    "episode_steps": 72,
+    "decision_minutes": 10,
+    "resource_totals": [
+      30,
+      24,
+      16,
+      12
+    ],
+    "holding_per_service_node": [
+      5,
+      4,
+      3,
+      3
+    ],
+    "service_per_resource": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "base_service": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "request_probability": [
+      0.75,
+      0.55,
+      0.4,
+      0.3
+    ],
+    "resource_speed_m_per_min": [
+      80,
+      55,
+      40,
+      30
+    ],
+    "resource_setup_minutes": [
+      2,
+      4,
+      6,
+      8
+    ],
+    "travel_time_multiplier": 1.0,
+    "queue_capacity_per_service_node": 50,
+    "gate_base": [
+      5,
+      6,
+      5,
+      6
+    ],
+    "gate_peak": [
+      18,
+      21,
+      19,
+      22
+    ],
+    "peak_centers": [
+      20,
+      47
+    ],
+    "peak_widths": [
+      8,
+      10
+    ],
+    "afternoon_peak_ratio": 0.8,
+    "gate_phase_offsets": [
+      -4,
+      0,
+      4,
+      8
+    ],
+    "graph_propagation": 0.68,
+    "intensity_log_sd": 0.08,
+    "day_log_sd": 0.12,
+    "weekend_multiplier": 1.2,
+    "holiday_multiplier": 1.35,
+    "holiday_days": [
+      17,
+      18,
+      47,
+      48,
+      77,
+      78,
+      107,
+      108,
+      137,
+      138,
+      167,
+      168
+    ],
+    "weather_values": [
+      0.65,
+      0.9,
+      1.0,
+      1.1
+    ],
+    "weather_probabilities": [
+      0.15,
+      0.2,
+      0.45,
+      0.2
+    ],
+    "event_probability": 0.3,
+    "event_amplitude": 18,
+    "event_width": 7,
+    "movement_penalty": 0.025,
+    "overload_penalty": 0.02,
+    "queue_reward_scale": 25
+  },
+  "forecaster": {
+    "models": [
+      "persistence",
+      "historical_average",
+      "ridge",
+      "lstm",
+      "gru",
+      "edge_stgru"
+    ],
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "hidden": 32,
+    "epochs": 40,
+    "patience": 6,
+    "batch_size": 128,
+    "learning_rate": 0.002,
+    "weight_decay": 0.0001,
+    "ridge_alphas": [
+      0.1,
+      1.0,
+      10.0,
+      100.0
+    ],
+    "selected_model": "edge_stgru",
+    "selected_seed": 0,
+    "device": "cuda",
+    "torch_threads": 2
+  }
+}
